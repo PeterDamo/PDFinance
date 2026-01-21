@@ -1,8 +1,9 @@
 import streamlit as st
 import sys
 import os
+import pandas as pd
 
-# Configurazione del percorso per trovare i moduli nella cartella 'src'
+# Path setup per individuare correttamente la cartella 'src'
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 
 from src.logic import analizza_mercato_completo
@@ -17,9 +18,9 @@ st.set_page_config(page_title="Market Hunter 2026", layout="wide")
 carica_css(os.path.join("assets", "style.css"))
 
 st.title("🏹 Market Sentiment Hunter 2026")
-st.write("Analisi dinamica di S&P 500, NASDAQ-100 ed ETF leader.")
+st.write("Analisi S&P 500, NASDAQ-100 ed ETF con Score di acquisto.")
 
-if st.button("🚀 AVVIA SCANSIONE TOTALE (TOP 30)"):
+if st.button("🚀 AVVIA SCANSIONE COMPLETA (TOP 30)"):
     with st.spinner("Scansione di oltre 600 asset in corso..."):
         df = analizza_mercato_completo()
         
@@ -38,7 +39,11 @@ if 'risultati' in st.session_state:
         column_config={
             "TradingView": st.column_config.LinkColumn("Grafico", display_text="Vedi 📈"),
             "Buy Score": st.column_config.ProgressColumn("Score", format="%d", min_value=0, max_value=100),
-            "Dividendo (%)": st.column_config.NumberColumn("Div. (%)", format="%.2f%%"),
+            "Dividendo (%)": st.column_config.NumberColumn(
+                "Div. (%)", 
+                format="%.2f%%", # Moltiplica per 100 il decimale e mostra il %
+                help="Rendimento annuo atteso dai dividendi"
+            ),
             "Perf. 2024 (%)": st.column_config.NumberColumn(format="%.2f%%"),
             "Perf. 2025 (%)": st.column_config.NumberColumn(format="%.2f%%"),
             "Previsione 2026 (%)": st.column_config.NumberColumn(format="%.2f%%"),
@@ -46,6 +51,10 @@ if 'risultati' in st.session_state:
         hide_index=True,
         use_container_width=True
     )
+
+    # Download CSV
+    csv = st.session_state['risultati'].to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Scarica Report CSV", data=csv, file_name="market_hunter_2026.csv")
 
     st.divider()
     st.subheader("📰 Ultime News: Sentiment Correlato")
