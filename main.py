@@ -3,142 +3,195 @@ import yfinance as yf
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+from datetime import datetime
 import time
 
-# 1. Configurazione Pagina
-st.set_page_config(page_title="Scanner Finanziario 2026", layout="wide")
+# 1. Configurazione Pagina e Tema Chiaro
+st.set_page_config(page_title="Analizzatore Finanziario 2026", layout="wide")
 
+# CSS per sfondo bianco, tasti grigetti e TESTI GRIGIO SCURO
 st.markdown("""
     <style>
-    .stApp { background-color: #ffffff; }
-    .stButton>button { background-color: #e9ecef !important; color: #495057 !important; border-radius: 10px !important; width: 100%; }
-    .news-card { background-color: #f8f9fa; padding: 15px; border-radius: 10px; border-left: 6px solid #007bff; margin-bottom: 12px; }
+    /* Sfondo principale bianco */
+    .stApp {
+        background-color: #ffffff;
+    }
+    
+    /* Titoli e testi in grigio scuro */
+    h1, h2, h3, span, p, .stMarkdown {
+        color: #333333 !important;
+    }
+    
+    /* Personalizzazione pulsanti (grigetto con testo scuro) */
+    .stButton>button {
+        background-color: #eeeeee !important;
+        color: #444444 !important;
+        border: 1px solid #cccccc !important;
+        border-radius: 8px !important;
+        font-weight: 600;
+    }
+    .stButton>button:hover {
+        background-color: #e0e0e0 !important;
+        border-color: #999999 !important;
+    }
+
+    /* Card delle Notizie */
+    .news-card {
+        background-color: #fcfcfc;
+        padding: 18px;
+        border-radius: 12px;
+        border-left: 5px solid #666666;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    .news-title { 
+        font-weight: bold; 
+        font-size: 1.1em; 
+        color: #222222 !important; 
+        display: block;
+    }
+    .news-text {
+        color: #444444 !important;
+        margin-top: 8px;
+        font-size: 0.95em;
+    }
+    .news-meta { 
+        color: #777777 !important; 
+        font-size: 0.8em; 
+        margin-top: 10px;
+        display: block;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🏹 Analizzatore Strategico 2026")
-st.write("Se l'analisi non parte, assicurati di avere una connessione internet attiva.")
-
-# --- FUNZIONI DI SUPPORTO ---
-def safe_get_growth(hist_data):
-    """Calcola la crescita in modo sicuro gestendo i dati mancanti"""
-    try:
-        if len(hist_data) < 2: return 0.0
-        inizio = hist_data.iloc[0]
-        fine = hist_data.iloc[-1]
-        return round(((fine - inizio) / inizio) * 100, 2)
-    except:
-        return 0.0
+# --- FUNZIONI CORE ---
 
 def get_dynamic_tickers():
-    """Recupera ticker attivi da Yahoo Finance"""
+    """Recupera titoli attivi (USA e IT) in modo dinamico"""
     headers = {'User-Agent': 'Mozilla/5.0'}
     tickers = []
-    # Proviamo a prendere i più attivi
-    try:
-        url = "https://finance.yahoo.com/most-active"
-        res = requests.get(url, headers=headers, timeout=5)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        for a in soup.find_all('a'):
-            href = a.get('href', '')
-            if '/quote/' in href:
-                sym = href.split('/quote/')[1].split('?')[0].split('/')[0]
-                if sym.isalpha() and len(sym) < 6 and sym not in tickers:
-                    tickers.append(sym)
-    except:
-        pass
+    urls = [
+        "https://finance.yahoo.com/most-active",
+        "https://finance.yahoo.com/markets/stocks/most-active/?lookup=MI&auto_prefill=MI"
+    ]
+    for url in urls:
+        try:
+            res = requests.get(url, headers=headers, timeout=5)
+            soup = BeautifulSoup(res.text, 'html.parser')
+            for a in soup.find_all('a'):
+                href = a.get('href', '')
+                if '/quote/' in href:
+                    sym = href.split('/quote/')[1].split('?')[0].split('/')[0]
+                    if sym not in tickers: tickers.append(sym)
+        except: continue
     
-    # Se lo scraping fallisce, carichiamo una lista d'emergenza (Global + IT)
-    if not tickers:
-        tickers = ['NVDA', 'AAPL', 'TSLA', 'MSFT', 'ENEL.MI', 'ISP.MI', 'UCG.MI', 'ASML', 'NVO', 'AMZN']
-    
-    return tickers[:25]
+    # Fallback se lo scraping fallisce
+    if len(tickers) < 5:
+        tickers = ['NVDA', 'AAPL', 'TSLA', 'MSFT', 'AMZN', 'ENEL.MI', 'ISP.MI', 'UCG.MI', 'RACE.MI', 'ASML']
+    return tickers[:30]
 
-# --- CORE LOGIC ---
 def esegui_analisi():
     pool = get_dynamic_tickers()
-    risultati = []
-    news_feed = []
+    data_list = []
+    news_list = []
     
     progresso = st.progress(0)
     status = st.empty()
 
     for i, symbol in enumerate(pool):
-        status.info(f"Analisi in corso: **{symbol}**...")
+        status.markdown(f"<span style='color:#444'>Analisi in corso: **{symbol}**...</span>", unsafe_allow_html=True)
         try:
             t = yf.Ticker(symbol)
-            # Scarichiamo dati dal 2024 al 2026
+            # Carichiamo lo storico per i calcoli 2024-2025
             hist = t.history(start="2024-01-01")
             
             if not hist.empty:
-                # Suddivisione anni
-                df_2024 = hist.loc['2024-01-01':'2024-12-31']['Close']
-                df_2025 = hist.loc['2025-01-01':'2025-12-31']['Close']
-                df_2026 = hist.loc['2026-01-01':]['Close']
-                
-                # Calcolo Crescite
-                c24 = safe_get_growth(df_2024)
-                c25 = safe_get_growth(df_2025)
-                
-                # Crescita prevista (Target Analisti)
                 info = t.info
-                p_current = info.get('currentPrice', hist['Close'].iloc[-1])
-                p_target = info.get('targetMeanPrice')
-                c_prev_26 = round(((p_target - p_current) / p_current) * 100, 2) if p_target else 0.0
+                name = info.get('longName', symbol)
+                sector = info.get('sector', 'N/A')
                 
-                # Trend Settore (Simulato per velocità o preso da ETF)
-                settore = info.get('sector', 'N/A')
+                # Calcolo Crescita Storica
+                df_24 = hist.loc['2024-01-01':'2024-12-31']['Close']
+                c24 = ((df_24.iloc[-1] / df_24.iloc[0]) - 1) * 100 if not df_24.empty else 0
                 
-                risultati.append({
-                    "Azienda": info.get('longName', symbol),
+                df_25 = hist.loc['2025-01-01':'2025-12-31']['Close']
+                c25 = ((df_25.iloc[-1] / df_25.iloc[0]) - 1) * 100 if not df_25.empty else 0
+                
+                # Crescita Prevista 2026 (Target Analisti)
+                p_curr = info.get('currentPrice', hist['Close'].iloc[-1])
+                p_targ = info.get('targetMeanPrice')
+                c26_prev = ((p_targ / p_curr) - 1) * 100 if p_targ else 0
+                
+                data_list.append({
+                    "Azienda": name,
                     "Ticker": symbol,
-                    "Settore": settore,
-                    "Crescita 2024 (%)": c24,
-                    "Crescita 2025 (%)": c25,
-                    "Prevista 2026 (%)": c_prev_26,
+                    "Settore": sector,
+                    "Crescita 2024 (%)": round(c24, 2),
+                    "Crescita 2025 (%)": round(c25, 2),
+                    "Prevista 2026 (%)": round(c26_prev, 2),
                     "Analisi": f"https://www.tradingview.com/symbols/{symbol}"
                 })
-                
-                if t.news:
-                    n = t.news[0]
-                    news_feed.append({
-                        "name": info.get('longName', symbol),
-                        "title": n['title'],
-                        "date": datetime.fromtimestamp(n['providerPublishTime']).strftime('%d/%m/%Y')
+
+                # Recupero News (Metodo Rinforzato)
+                raw_news = t.news
+                if raw_news:
+                    n = raw_news[0]
+                    news_list.append({
+                        "name": name,
+                        "ticker": symbol,
+                        "title": n.get('title', 'Titolo non disponibile'),
+                        "publisher": n.get('publisher', 'Fonte Finanziaria'),
+                        "time": datetime.fromtimestamp(n.get('providerPublishTime')).strftime('%d/%m/%Y %H:%M')
                     })
+            
             time.sleep(0.1)
-        except Exception as e:
-            continue
+        except: continue
         progresso.progress((i + 1) / len(pool))
     
     status.empty()
-    return pd.DataFrame(risultati), news_feed
+    df = pd.DataFrame(data_list).sort_values(by="Prevista 2026 (%)", ascending=False).head(20)
+    return df, news_list
 
-# --- INTERFACCIA ---
-if st.button('🚀 AVVIA ANALISI DINAMICA'):
-    df, news = esegui_analisi()
-    if not df.empty:
-        st.session_state.data = df
-        st.session_state.news = news
-    else:
-        st.error("Errore: Il server non ha restituito dati. Riprova tra un minuto.")
+# --- INTERFACCIA UTENTE ---
 
-if 'data' in st.session_state:
-    st.subheader("📊 Risultati Analisi Storica e Previsionale")
+st.title("🏹 Market Insight 2026")
+st.write("Scanner dinamico per titoli e ETF con analisi storica e news feed.")
+
+if st.button('🚀 AVVIA SCANSIONE MERCATI'):
+    df_res, news_res = esegui_analisi()
+    st.session_state.df = df_res
+    st.session_state.news = news_res
+
+if 'df' in st.session_state:
+    st.subheader("📊 Top 20 Titoli per Potenziale 2026")
     st.dataframe(
-        st.session_state.data,
-        column_config={"Analisi": st.column_config.LinkColumn(display_text="Grafico 📈")},
+        st.session_state.df,
+        column_config={
+            "Analisi": st.column_config.LinkColumn("Grafico", display_text="Apri TV 📈"),
+            "Crescita 2024 (%)": st.column_config.NumberColumn(format="%.2f%%"),
+            "Crescita 2025 (%)": st.column_config.NumberColumn(format="%.2f%%"),
+            "Prevista 2026 (%)": st.column_config.NumberColumn(format="%.2f%%"),
+        },
         hide_index=True, use_container_width=True
     )
     
-    # Download
-    csv = st.session_state.data.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Scarica Report CSV", csv, "report_2026.csv", "text/csv")
+    # Download CSV
+    csv = st.session_state.df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Scarica Report CSV", csv, "analisi_finanza_2026.csv", "text/csv")
 
     st.divider()
-    st.subheader("📰 Ultime Notizie")
-    cols = st.columns(2)
-    for idx, n in enumerate(st.session_state.news[:12]):
-        with cols[idx % 2]:
-            st.markdown(f'<div class="news-card"><b>{n["name"]}</b><br>{n["title"]}<br><small>{n["date"]}</small></div>', unsafe_allow_html=True)
+
+    st.subheader("📰 Ultime Notizie dai Mercati Analizzati")
+    if st.session_state.news:
+        c1, c2 = st.columns(2)
+        for idx, n in enumerate(st.session_state.news):
+            with (c1 if idx % 2 == 0 else c2):
+                st.markdown(f"""
+                    <div class="news-card">
+                        <span class="news-title">{n['name']} ({n['ticker']})</span>
+                        <p class="news-text">{n['title']}</p>
+                        <span class="news-meta"><b>{n['publisher']}</b> • {n['time']}</span>
+                    </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.info("Nessuna notizia recente trovata per i titoli selezionati.")
