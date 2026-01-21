@@ -39,51 +39,33 @@ def analizza_mercato_completo():
     pool = all_tickers[:600] 
 
     for ticker in pool:
-        try:
-            symbol = str(ticker).replace('.', '-')
-            t = yf.Ticker(symbol)
-            hist = t.history(period="3y")
-            if hist.empty: continue
-            
-            info = t.info
-            curr_p = info.get('currentPrice') or hist['Close'].iloc[-1]
-            target = info.get('targetMeanPrice')
-            
-            # --- Calcolo Dati ---
-            div_yield = (info.get('dividendYield') or info.get('trailingAnnualDividendYield') or 0) * 100
-            
-            # Performance 2024 e 2025
-            h24 = hist[hist.index.year == 2024]
-            perf_24 = ((h24['Close'].iloc[-1] / h24['Close'].iloc[0]) - 1) * 100 if not h24.empty else 0
-            h25 = hist[hist.index.year == 2025]
-            perf_25 = ((h25['Close'].iloc[-1] / h25['Close'].iloc[0]) - 1) * 100 if not h25.empty else 0
-            
-            # Previsione 2026 (Per ETF usiamo il trend momentum se il target manca)
-            if target:
-                prev_2026 = ((target / curr_p) - 1) * 100
-            else:
-                # Fallback per ETF: proiezione basata sulla media mobile
-                prev_2026 = perf_25 * 0.8 # Stima conservativa basata sull'anno precedente
 
-            # --- Score (0-100) ---
-            score = 0
-            sma50 = hist['Close'].rolling(window=50).mean().iloc[-1]
-            if curr_p > sma50: score += 30
-            if prev_2026 > 10: score += 40
-            if 'buy' in str(info.get('recommendationKey', '')).lower() or not target: score += 30
-
+        info = t.info
+            
+            # Recupero del dividendo (gestisce diverse chiavi di yfinance)
+            div_raw = info.get('dividendYield') or info.get('trailingAnnualDividendYield') or 0
+            
+            # Se div_raw è None lo forziamo a 0
+            if div_raw is None: div_raw = 0
+            
+            # CONVERSIONE IN PERCENTUALE ESPLICITA
+            div_perc = float(div_raw) * 100 
+            
+# ... nell'assegnazione al dizionario risultati ...
             risultati.append({
                 "Codice": symbol,
                 "Nome": info.get('longName', symbol),
                 "Tipo": "ETF" if info.get('quoteType') == 'ETF' else "Azione",
                 "Settore/Asset": info.get('sector') or info.get('category', 'N/A'),
-                "Dividendo (%)": round(div_yield, 2),
+                "Dividendo (%)": round(div_perc, 2), # Salviamo es. 3.50
                 "Perf. 2024 (%)": round(perf_24, 2),
                 "Perf. 2025 (%)": round(perf_25, 2),
                 "Previsione 2026 (%)": round(prev_2026, 2),
                 "Buy Score": score,
                 "TradingView": f"https://www.tradingview.com/symbols/{symbol}/"
             })
+        
+    
         except: continue
             
     df_final = pd.DataFrame(risultati)
