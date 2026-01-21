@@ -1,6 +1,6 @@
-pandas
+streamlit
 yfinance
-nltk
-requests
-tqdm
-python-dotenv
+pandas
+lxml
+beautifulsoup4
+html5lib
