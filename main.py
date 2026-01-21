@@ -20,7 +20,7 @@ if os.path.exists(css_path):
 st.title("🏹 Market Sentiment Hunter 2026")
 
 if st.button("🚀 Avvia Scansione Completa"):
-    with st.spinner("Analisi profonda dei 500 titoli e recupero news..."):
+    with st.spinner("Analisi profonda dei migliori titoli ed etf e recupero news..."):
         df = analizza_titoli_dinamico()
         if not df.empty:
             st.session_state['risultati'] = df
