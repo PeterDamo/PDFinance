@@ -6,192 +6,164 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import time
 
-# 1. Configurazione Pagina e Tema Chiaro
-st.set_page_config(page_title="Analizzatore Finanziario 2026", layout="wide")
+# 1. Configurazione Pagina
+st.set_page_config(page_title="Top 30 Global & Italy 2026", layout="wide")
 
-# CSS per sfondo bianco, tasti grigetti e TESTI GRIGIO SCURO
 st.markdown("""
     <style>
-    /* Sfondo principale bianco */
-    .stApp {
-        background-color: #ffffff;
-    }
-    
-    /* Titoli e testi in grigio scuro */
-    h1, h2, h3, span, p, .stMarkdown {
-        color: #333333 !important;
-    }
-    
-    /* Personalizzazione pulsanti (grigetto con testo scuro) */
+    .stApp { background-color: #ffffff; }
+    h1, h2, h3, span, p, .stMarkdown { color: #333333 !important; }
     .stButton>button {
         background-color: #eeeeee !important;
         color: #444444 !important;
         border: 1px solid #cccccc !important;
         border-radius: 8px !important;
         font-weight: 600;
+        width: 100%;
     }
-    .stButton>button:hover {
-        background-color: #e0e0e0 !important;
-        border-color: #999999 !important;
-    }
-
-    /* Card delle Notizie */
     .news-card {
         background-color: #fcfcfc;
-        padding: 18px;
-        border-radius: 12px;
-        border-left: 5px solid #666666;
-        margin-bottom: 15px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-    }
-    .news-title { 
-        font-weight: bold; 
-        font-size: 1.1em; 
-        color: #222222 !important; 
-        display: block;
-    }
-    .news-text {
-        color: #444444 !important;
-        margin-top: 8px;
-        font-size: 0.95em;
-    }
-    .news-meta { 
-        color: #777777 !important; 
-        font-size: 0.8em; 
-        margin-top: 10px;
-        display: block;
+        padding: 15px;
+        border-radius: 10px;
+        border-left: 5px solid #333333;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNZIONI CORE ---
+# --- MOTORE DI RECUPERO DINAMICO ---
 
-def get_dynamic_tickers():
-    """Recupera titoli attivi (USA e IT) in modo dinamico"""
+@st.cache_data(ttl=3600)
+def get_sp500_tickers():
+    """Recupera la lista aggiornata dell'S&P 500 da Wikipedia"""
+    try:
+        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        res = requests.get(url)
+        df = pd.read_html(res.text)[0]
+        return df['Symbol'].tolist()
+    except:
+        return ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA']
+
+def get_italy_tickers():
+    """Recupera i titoli più attivi di Borsa Italiana"""
     headers = {'User-Agent': 'Mozilla/5.0'}
     tickers = []
-    urls = [
-        "https://finance.yahoo.com/most-active",
-        "https://finance.yahoo.com/markets/stocks/most-active/?lookup=MI&auto_prefill=MI"
-    ]
-    for url in urls:
-        try:
-            res = requests.get(url, headers=headers, timeout=5)
-            soup = BeautifulSoup(res.text, 'html.parser')
-            for a in soup.find_all('a'):
-                href = a.get('href', '')
-                if '/quote/' in href:
-                    sym = href.split('/quote/')[1].split('?')[0].split('/')[0]
-                    if sym not in tickers: tickers.append(sym)
-        except: continue
-    
-    # Fallback se lo scraping fallisce
-    if len(tickers) < 5:
-        tickers = ['NVDA', 'AAPL', 'TSLA', 'MSFT', 'AMZN', 'ENEL.MI', 'ISP.MI', 'UCG.MI', 'RACE.MI', 'ASML']
-    return tickers[:30]
+    url = "https://finance.yahoo.com/markets/stocks/most-active/?lookup=MI&auto_prefill=MI"
+    try:
+        res = requests.get(url, headers=headers)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        for a in soup.find_all('a'):
+            href = a.get('href', '')
+            if '/quote/' in href:
+                sym = href.split('/quote/')[1].split('?')[0].split('/')[0]
+                if ".MI" in sym: tickers.append(sym)
+    except: pass
+    return tickers
 
-def esegui_analisi():
-    pool = get_dynamic_tickers()
-    data_list = []
-    news_list = []
-    
-    progresso = st.progress(0)
-    status = st.empty()
+# --- LOGICA DI ANALISI ---
 
-    for i, symbol in enumerate(pool):
-        status.markdown(f"<span style='color:#444'>Analisi in corso: **{symbol}**...</span>", unsafe_allow_html=True)
-        try:
-            t = yf.Ticker(symbol)
-            # Carichiamo lo storico per i calcoli 2024-2025
-            hist = t.history(start="2024-01-01")
+def analizza_titolo_robusto(symbol):
+    """Analisi tecnica e previsionale con protezione anti-crash"""
+    try:
+        t = yf.Ticker(symbol)
+        # Scarichiamo dati sufficienti per 2024, 2025 e 2026
+        hist = t.history(period="3y") 
+        if hist.empty or len(hist) < 100: return None
+        
+        info = t.info
+        current_price = info.get('currentPrice') or info.get('regularMarketPrice') or hist['Close'].iloc[-1]
+        
+        # --- CALCOLO STORICO (Anti-KeyError: usiamo il filtraggio per anno) ---
+        # 2024
+        h24 = hist[hist.index.year == 2024]
+        c24 = ((h24['Close'].iloc[-1] / h24['Close'].iloc[0]) - 1) * 100 if not h24.empty else 0
+        
+        # 2025
+        h25 = hist[hist.index.year == 2025]
+        c25 = ((h25['Close'].iloc[-1] / h25['Close'].iloc[0]) - 1) * 100 if not h25.empty else 0
+
+        # --- PREVISIONI 2026 ---
+        target = info.get('targetMeanPrice')
+        upside = ((target / current_price) - 1) * 100 if target else 0
+        
+        # Sentiment Score
+        score = 0
+        sma50 = hist['Close'].rolling(window=50).mean().iloc[-1]
+        if current_price > sma50: score += 40
+        if upside > 15: score += 40
+        if info.get('recommendationKey') in ['buy', 'strong_buy']: score += 20
+        
+        if score < 30: return None # Filtro qualità
+
+        return {
+            "Mercato": "Italia 🇮🇹" if ".MI" in symbol else "USA 🇺🇸",
+            "Azienda": info.get('longName', symbol[:15]),
+            "Ticker": symbol,
+            "Crescita 2024 (%)": round(c24, 2),
+            "Crescita 2025 (%)": round(c25, 2),
+            "Upside 2026 (%)": round(upside, 2),
+            "Sentiment": "Ottimo 🔥" if score >= 80 else "Buono 📈" if score >= 50 else "Stabile ⚖️",
+            "Score": score
+        }
+    except: return None
+
+# --- UI ---
+
+st.title("🎯 Top 30 Market Scanner: S&P 500 & Italia")
+st.write("Analisi dinamica basata su dati real-time. Sentiment e Previsioni 2026.")
+
+if st.button('🚀 AVVIA SCANSIONE COMPLETA'):
+    with st.spinner('Recupero liste mercati e analisi in corso...'):
+        # 1. Creazione Pool Dinamico
+        sp500 = get_sp500_tickers()[:40] # Campionamento per velocità
+        italy = get_italy_tickers()
+        pool = list(set(sp500 + italy))
+        
+        risultati = []
+        news_list = []
+        progresso = st.progress(0)
+        
+        # 2. Loop di analisi
+        for i, s in enumerate(pool):
+            data = analizza_titolo_robusto(s)
+            if data: risultati.append(data)
+            progresso.progress((i + 1) / len(pool))
+        
+        # 3. Ordinamento e selezione Top 30
+        if risultati:
+            df = pd.DataFrame(risultati).sort_values(by="Score", ascending=False).head(30)
+            st.session_state.top30 = df
             
-            if not hist.empty:
-                info = t.info
-                name = info.get('longName', symbol)
-                sector = info.get('sector', 'N/A')
-                
-                # Calcolo Crescita Storica
-                df_24 = hist.loc['2024-01-01':'2024-12-31']['Close']
-                c24 = ((df_24.iloc[-1] / df_24.iloc[0]) - 1) * 100 if not df_24.empty else 0
-                
-                df_25 = hist.loc['2025-01-01':'2025-12-31']['Close']
-                c25 = ((df_25.iloc[-1] / df_25.iloc[0]) - 1) * 100 if not df_25.empty else 0
-                
-                # Crescita Prevista 2026 (Target Analisti)
-                p_curr = info.get('currentPrice', hist['Close'].iloc[-1])
-                p_targ = info.get('targetMeanPrice')
-                c26_prev = ((p_targ / p_curr) - 1) * 100 if p_targ else 0
-                
-                data_list.append({
-                    "Azienda": name,
-                    "Ticker": symbol,
-                    "Settore": sector,
-                    "Crescita 2024 (%)": round(c24, 2),
-                    "Crescita 2025 (%)": round(c25, 2),
-                    "Prevista 2026 (%)": round(c26_prev, 2),
-                    "Analisi": f"https://www.tradingview.com/symbols/{symbol}"
-                })
-
-                # Recupero News (Metodo Rinforzato)
-                raw_news = t.news
-                if raw_news:
-                    n = raw_news[0]
+            # Recupero news per i top 10
+            for s in df['Ticker'].head(10):
+                try:
+                    n = yf.Ticker(s).news[0]
                     news_list.append({
-                        "name": name,
-                        "ticker": symbol,
-                        "title": n.get('title', 'Titolo non disponibile'),
-                        "publisher": n.get('publisher', 'Fonte Finanziaria'),
-                        "time": datetime.fromtimestamp(n.get('providerPublishTime')).strftime('%d/%m/%Y %H:%M')
+                        "t": s, "title": n['title'], "pub": n['publisher']
                     })
-            
-            time.sleep(0.1)
-        except: continue
-        progresso.progress((i + 1) / len(pool))
-    
-    status.empty()
-    df = pd.DataFrame(data_list).sort_values(by="Prevista 2026 (%)", ascending=False).head(20)
-    return df, news_list
+                except: continue
+            st.session_state.top_news = news_list
 
-# --- INTERFACCIA UTENTE ---
-
-st.title("🏹 Market Insight 2026")
-st.write("Scanner dinamico per titoli e ETF con analisi storica e news feed.")
-
-if st.button('🚀 AVVIA SCANSIONE MERCATI'):
-    df_res, news_res = esegui_analisi()
-    st.session_state.df = df_res
-    st.session_state.news = news_res
-
-if 'df' in st.session_state:
-    st.subheader("📊 Top 20 Titoli per Potenziale 2026")
+if 'top30' in st.session_state:
+    st.subheader("📊 Classifica Top 30 Titoli (Sentiment & Upside)")
     st.dataframe(
-        st.session_state.df,
+        st.session_state.top30.drop(columns=['Score']),
         column_config={
-            "Analisi": st.column_config.LinkColumn("Grafico", display_text="Apri TV 📈"),
             "Crescita 2024 (%)": st.column_config.NumberColumn(format="%.2f%%"),
             "Crescita 2025 (%)": st.column_config.NumberColumn(format="%.2f%%"),
-            "Prevista 2026 (%)": st.column_config.NumberColumn(format="%.2f%%"),
+            "Upside 2026 (%)": st.column_config.NumberColumn(format="%.2f%%"),
         },
         hide_index=True, use_container_width=True
     )
     
-    # Download CSV
-    csv = st.session_state.df.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Scarica Report CSV", csv, "analisi_finanza_2026.csv", "text/csv")
-
     st.divider()
+    
+    st.subheader("📰 Flash News Titoli Leader")
+    c1, c2 = st.columns(2)
+    for idx, n in enumerate(st.session_state.top_news):
+        with (c1 if idx % 2 == 0 else c2):
+            st.markdown(f"""<div class="news-card"><b>{n['t']}</b>: {n['title']}<br><small>{n['pub']}</small></div>""", unsafe_allow_html=True)
 
-    st.subheader("📰 Ultime Notizie dai Mercati Analizzati")
-    if st.session_state.news:
-        c1, c2 = st.columns(2)
-        for idx, n in enumerate(st.session_state.news):
-            with (c1 if idx % 2 == 0 else c2):
-                st.markdown(f"""
-                    <div class="news-card">
-                        <span class="news-title">{n['name']} ({n['ticker']})</span>
-                        <p class="news-text">{n['title']}</p>
-                        <span class="news-meta"><b>{n['publisher']}</b> • {n['time']}</span>
-                    </div>
-                """, unsafe_allow_html=True)
-    else:
-        st.info("Nessuna notizia recente trovata per i titoli selezionati.")
+    csv = st.session_state.top30.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Scarica Report CSV", csv, "Top30_Global_IT.csv", "text/csv")
