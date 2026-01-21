@@ -3,10 +3,8 @@ import yfinance as yf
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
-import time
 
-# 1. Configurazione Pagina e Stile
+# 1. Configurazione Pagina
 st.set_page_config(page_title="S&P 500 Hunter 2026", layout="wide")
 
 st.markdown("""
@@ -32,23 +30,16 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- RECUPERO TITOLI DINAMICO (Fallback Multi-Livello) ---
+# --- RECUPERO TITOLI DINAMICO ---
 
 def get_sp500_dynamic():
-    headers = {'User-Agent': 'Mozilla/5.0'}
     try:
         url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
         tables = pd.read_html(url)
         return tables[0]['Symbol'].tolist()
-    except:
-        try:
-            url = "https://finance.yahoo.com/markets/stocks/most-active/"
-            res = requests.get(url, headers=headers, timeout=5)
-            soup = BeautifulSoup(res.text, 'html.parser')
-            tickers = [a.get('href').split('/')[-1].split('?')[0] for a in soup.find_all('a') if '/quote/' in a.get('href', '')]
-            return list(set([t for t in tickers if t.isalpha()]))
-        except:
-            return ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'BRK-B', 'LLY']
+    except Exception:
+        # Fallback se Wikipedia non risponde
+        return ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'BRK-B', 'LLY']
 
 # --- ANALISI CORE ---
 
@@ -58,8 +49,8 @@ def esegui_analisi():
     news_feed = []
     sector_scores = {}
     
-    # Analizziamo i primi 70 per estrarre i 30 migliori (ottimizzazione velocità)
-    pool = all_tickers[:200] 
+    # Pool di analisi (limitato a 60 per stabilità e velocità)
+    pool = all_tickers[:60] 
     status = st.empty()
     bar = st.progress(0)
     
@@ -68,35 +59,35 @@ def esegui_analisi():
         try:
             clean_sym = sym.replace('.', '-')
             t = yf.Ticker(clean_sym)
-            hist = t.history(period="3y") 
-            if hist.empty: continue
+            hist = t.history(period="2y") 
+            
+            if hist.empty or len(hist) < 20:
+                continue
             
             info = t.info
             curr_p = info.get('currentPrice') or hist['Close'].iloc[-1]
             target = info.get('targetMeanPrice')
             sector = info.get('sector', 'N/A')
             
-            # --- CALCOLO CRESCITE (SICURO DA KEYERROR) ---
-            # Filtriamo per anno e prendiamo il primo/ultimo valore disponibile
+            # Calcolo Crescite (Evitiamo date fisse per prevenire KeyError)
             h24 = hist[hist.index.year == 2024]
-            c24 = ((h24['Close'].iloc[-1] / h24['Close'].iloc[0]) - 1) * 100 if not h24.empty else 0
+            c24 = ((h24['Close'].iloc[-1] / h24['Close'].iloc[0]) - 1) * 100 if len(h24) > 1 else 0
             
             h25 = hist[hist.index.year == 2025]
-            c25 = ((h25['Close'].iloc[-1] / h25['Close'].iloc[0]) - 1) * 100 if not h25.empty else 0
+            c25 = ((h25['Close'].iloc[-1] / h25['Close'].iloc[0]) - 1) * 100 if len(h25) > 1 else 0
             
             upside_26 = ((target / curr_p) - 1) * 100 if target else 0
             
-            # --- SENTIMENT SCORE ---
+            # Sentiment Score Algoritmico
             score = 0
-            sma50 = hist['Close'].rolling(window=50).mean().iloc[-1]
+            sma50 = hist['Close'].rolling(window=50).mean().iloc[-1] if len(hist) >= 50 else curr_p
             if curr_p > sma50: score += 40
-            if upside_26 > 12: score += 40
+            if upside_26 > 10: score += 40
             if info.get('recommendationKey') in ['buy', 'strong_buy']: score += 20
             
-            # Tracking Settore
+            # Track Settore
             if sector != 'N/A':
-                if sector not in sector_scores: sector_scores[sector] = []
-                sector_scores[sector].append(score)
+                sector_scores.setdefault(sector, []).append(score)
 
             results.append({
                 "Azienda": info.get('longName', sym),
@@ -110,22 +101,28 @@ def esegui_analisi():
                 "TradingView": f"https://www.tradingview.com/symbols/{clean_sym}/"
             })
             
-            # --- RACCOLTA NEWS ---
-            raw_news = t.news
-            if raw_news:
-                n = raw_news[0]
+            # Recupero News
+            ticker_news = t.news
+            if ticker_news:
+                n = ticker_news[0]
                 news_feed.append({
                     "s": sym, "t": n.get('title'), "p": n.get('publisher'), "u": n.get('link')
                 })
-        except: continue
-        bar.progress((i + 1) / len(pool))
+        except Exception:
+            continue
+        finally:
+            bar.progress((i + 1) / len(pool))
         
     status.empty()
     
-    # Calcolo Trend Settore (Media Score)
-    sector_trend_map = {s: (sum(v)/len(v)) for s, v in sector_scores.items()}
+    # Protezione contro DataFrame vuoto (Risolve il tuo KeyError)
+    if not results:
+        return pd.DataFrame(), []
+
+    df_final = pd.DataFrame(results)
     
-    df_final = pd.DataFrame(results).sort_values(by="Score", ascending=False).head(30)
+    # Calcolo Trend Settore
+    sector_trend_map = {s: (sum(v)/len(v)) for s, v in sector_scores.items()}
     
     def format_sector_trend(row):
         avg = sector_trend_map.get(row['Settore'], 50)
@@ -133,16 +130,23 @@ def esegui_analisi():
     
     df_final['Trend Settore'] = df_final.apply(format_sector_trend, axis=1)
     
+    # Ordinamento finale
+    df_final = df_final.sort_values(by="Score", ascending=False).head(30)
+    
     return df_final, news_feed
 
-# --- INTERFACCIA ---
+# --- INTERFACCIA UTENTE ---
 
 st.title("🏹 S&P 500 Hunter 2026: Analisi Settori & News")
 
 if st.button('🚀 AVVIA SCANSIONE DINAMICA'):
     df_res, news_res = esegui_analisi()
-    st.session_state.df_hunter = df_res
-    st.session_state.news_hunter = news_res
+    
+    if df_res.empty:
+        st.error("Nessun dato recuperato. Verifica la connessione o riprova tra pochi minuti.")
+    else:
+        st.session_state.df_hunter = df_res
+        st.session_state.news_hunter = news_res
 
 if 'df_hunter' in st.session_state:
     st.subheader("📊 Top 30 Titoli per Sentiment")
