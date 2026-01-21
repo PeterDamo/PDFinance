@@ -83,7 +83,7 @@ st.dataframe(
         hide_index=True,
         use_container_width=True
     )
-    )
+
 
     # Download Report
     csv = st.session_state['risultati'].to_csv(index=False).encode('utf-8')
