@@ -12,47 +12,41 @@ def carica_css(file_path):
 
 st.set_page_config(page_title="Market Hunter 2026", layout="wide")
 
-# Caricamento CSS Assets
+# Caricamento Stile (Bianco/Grigio)
 css_path = os.path.join("assets", "style.css")
 if os.path.exists(css_path):
     carica_css(css_path)
 
 st.title("🏹 Market Sentiment Hunter 2026")
-st.write("Analisi quantitativa dei 500 titoli S&P 500 con Score predittivo.")
+st.write("Scansione live S&P 500: Analisi storica e potenziale di crescita 2026.")
 
 if st.button("🚀 Avvia Scansione Completa"):
-    with st.spinner("Analisi profonda dei 500 titoli in corso..."):
+    with st.spinner("Analisi dei 500 titoli in corso..."):
         df = analizza_titoli_dinamico()
-        
-        if df is not None and not df.empty:
+        if not df.empty:
             st.session_state['risultati'] = df
         else:
             st.warning("Non ci sono titoli analizzati")
 
 if 'risultati' in st.session_state:
-    st.subheader("I 20 migliori titoli consigliati")
+    st.subheader("Top 20 Titoli per Opportunità")
     
-    # Visualizzazione Tabella
     st.dataframe(
         st.session_state['risultati'],
         column_config={
             "TradingView": st.column_config.LinkColumn("Grafico", display_text="Vedi 📈"),
-            "Buy Score": st.column_config.ProgressColumn(
-                "Buy Score",
-                help="Punteggio da 0 a 100 basato su Trend, Target e Consenso",
-                format="%d",
-                min_value=0,
-                max_value=100,
-            ),
+            "Buy Score": st.column_config.ProgressColumn("Score", format="%d", min_value=0, max_value=100),
             "Andamento 2024 (%)": st.column_config.NumberColumn(format="%.2f%%"),
             "Andamento 2025 (%)": st.column_config.NumberColumn(format="%.2f%%"),
+            "Previsione 2026 (%)": st.column_config.NumberColumn(
+                "Previsione 2026",
+                help="Upside potenziale basato sul Target Price medio degli analisti",
+                format="%.2f%%"
+            ),
         },
         hide_index=True,
         use_container_width=True
     )
     
-    st.download_button(
-        "📥 Scarica Report Completo CSV", 
-        data=st.session_state['risultati'].to_csv(index=False).encode('utf-8'), 
-        file_name="market_analysis_2026.csv"
-    )
+    csv = st.session_state['risultati'].to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Scarica Report CSV", data=csv, file_name="analisi_2026.csv")
