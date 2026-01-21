@@ -1,4 +1,6 @@
-import streamlit as st
+
+# Importazione dei moduli personalizzati
+try:import streamlit as st
 import sys
 import os
 import pandas as pd
@@ -6,8 +8,6 @@ import pandas as pd
 # Forza l'aggiunta della cartella 'src' al path di sistema per evitare errori di importazione
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-# Importazione dei moduli personalizzati
-try:
     from src.logic import analizza_mercato_completo
     from src.news import recupera_news_aggiornate
 except ImportError:
@@ -59,18 +59,22 @@ if 'risultati' in st.session_state:
     st.subheader("📊 Top 30 Opportunità: Classifica per Buy Score")
     
     # Visualizzazione Tabella Pro
-    st.dataframe(
+st.dataframe(
         st.session_state['risultati'],
         column_config={
             "TradingView": st.column_config.LinkColumn("Grafico", display_text="Vedi 📈"),
             "Buy Score": st.column_config.ProgressColumn(
                 "Buy Score",
-                help="Punteggio da 0 a 100 basato su Trend, Target Analisti e Consenso",
                 format="%d",
                 min_value=0,
                 max_value=100,
             ),
-            "Dividendo (%)": st.column_config.NumberColumn(format="%.2f%%"),
+            # FORMATTAZIONE FORZATA: il suffisso % viene aggiunto visivamente
+            "Dividendo (%)": st.column_config.NumberColumn(
+                "Dividendo (%)",
+                format="%.2f%%", # Questo aggiunge il simbolo % alla fine del numero
+                help="Rendimento da dividendo annuo calcolato in percentuale"
+            ),
             "Perf. 2024 (%)": st.column_config.NumberColumn(format="%.2f%%"),
             "Perf. 2025 (%)": st.column_config.NumberColumn(format="%.2f%%"),
             "Previsione 2026 (%)": st.column_config.NumberColumn(format="%.2f%%"),
@@ -78,6 +82,7 @@ if 'risultati' in st.session_state:
         },
         hide_index=True,
         use_container_width=True
+    )
     )
 
     # Download Report
