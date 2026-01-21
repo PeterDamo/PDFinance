@@ -1,44 +1,31 @@
 # main.py
 import streamlit as st
-# main.py
 import sys
 import os
 
-# Forza Python a guardare nella cartella corrente per trovare 'src'
+# Assicurati che src sia visibile
 sys.path.append(os.path.dirname(__file__))
 
-from src.logic import esegui_analisi_sentiment  # Assicurati che il nome della funzione coincida
+from src.logic import analizza_titoli_dinamico
 
-st.set_page_config(page_title="Top 20 Sentiment Hunter", layout="wide")
+st.set_page_config(page_title="Market Hunter", layout="wide")
 
-st.title("🎯 Top 20 Titoli per Sentiment - 2026")
-st.write("Analisi dinamica basata su dati real-time dei mercati americani.")
+st.title("🏹 Market Sentiment Hunter 2026")
 
-if st.button("🚀 Avvia Scansione Mercato"):
-    with st.spinner("Analisi in corso... Potrebbe volerci un minuto."):
-        df_top20 = analizza_titoli_dinamico()
-        st.session_state['risultati'] = df_top20
+if st.button("🚀 Avvia Analisi Dinamica"):
+    with st.spinner("Scansione mercati in corso..."):
+        df = analizza_titoli_dinamico()
+        if not df.empty:
+            st.session_state['risultati'] = df
+        else:
+            st.error("Errore nel recupero dati. Riprova tra un istante.")
 
 if 'risultati' in st.session_state:
-    df = st.session_state['risultati']
-    
-    # Mostriamo la tabella con link e formattazione
     st.dataframe(
-        df.drop(columns=['Score']),
+        st.session_state['risultati'].drop(columns=['Score']),
         column_config={
-            "TradingView": st.column_config.LinkColumn("Analisi Grafica", display_text="Vedi Grafico 📈"),
-            "Crescita 2024 (%)": st.column_config.NumberColumn(format="%.2f%%"),
-            "Crescita 2025 (%)": st.column_config.NumberColumn(format="%.2f%%"),
+            "TradingView": st.column_config.LinkColumn("Grafico", display_text="Vedi 📈")
         },
         hide_index=True,
         use_container_width=True
-    )
-    
-    # Funzione di download
-    csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Scarica Report Finale (CSV)",
-        data=csv,
-        file_name="top_20_sentiment_2026.csv",
-        mime="text/csv",
     )
