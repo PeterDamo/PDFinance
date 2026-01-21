@@ -1,6 +1,13 @@
 # main.py
 import streamlit as st
-from src.logic import analizza_titoli_dinamico
+# main.py
+import sys
+import os
+
+# Forza Python a guardare nella cartella corrente per trovare 'src'
+sys.path.append(os.path.dirname(__file__))
+
+from src.logic import esegui_analisi_sentiment  # Assicurati che il nome della funzione coincida
 
 st.set_page_config(page_title="Top 20 Sentiment Hunter", layout="wide")
 
