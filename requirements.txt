@@ -1,6 +1,6 @@
-yfinance
 pandas
-textblob
-streamlit
+yfinance
+nltk
 requests
-beautifulsoup4
+tqdm
+python-dotenv
