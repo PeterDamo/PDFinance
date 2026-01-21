@@ -1,26 +1,21 @@
-# Importazione dei moduli standard
+import streamlit as st
 import sys
 import os
-import pandas as pd
 
-# Tentativo di importare Streamlit; se non è installato forniamo un messaggio chiaro
-try:
-    import streamlit as st
-except ImportError:
-    print("Errore: Streamlit non è installato. Esegui 'pip install streamlit' e riprova.")
-    raise
+# Forza Python a includere la cartella del progetto nei percorsi di ricerca
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
 
-# Forza l'aggiunta della cartella 'src' al path di sistema per evitare errori di importazione
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
-
-# Import dei moduli locali (logic.py, news.py). Se mancano mostriamo errore in-app.
+# Ora l'importazione funzionerà correttamente
 try:
     from src.logic import analizza_mercato_completo
     from src.news import recupera_news_aggiornate
-except ImportError:
-    st.error("Errore: Assicurati che i file 'logic.py' e 'news.py' siano nella cartella 'src'.")
-    # Blocchiamo l'esecuzione successiva perché le funzioni richieste non sono disponibili.
-    raise
+except ModuleNotFoundError:
+    # Fallback per alcuni ambienti cloud
+    from logic import analizza_mercato_completo
+    from news import recupera_news_aggiornate
+    
 
 # --- FUNZIONI DI SUPPORTO ---
 def carica_css(file_path: str) -> None:
