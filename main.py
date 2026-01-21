@@ -6,8 +6,8 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import time
 
-# 1. Configurazione Pagina
-st.set_page_config(page_title="S&P 500 Hunter - Sector & News", layout="wide")
+# 1. Configurazione Pagina e Stile
+st.set_page_config(page_title="S&P 500 Hunter 2026", layout="wide")
 
 st.markdown("""
     <style>
@@ -29,17 +29,10 @@ st.markdown("""
         margin-bottom: 12px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
-    .sector-tag {
-        background-color: #e0e0e0;
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 0.8em;
-        color: #555;
-    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- RECUPERO TITOLI 100% DINAMICO ---
+# --- RECUPERO TITOLI DINAMICO (Fallback Multi-Livello) ---
 
 def get_sp500_dynamic():
     headers = {'User-Agent': 'Mozilla/5.0'}
@@ -53,28 +46,29 @@ def get_sp500_dynamic():
             res = requests.get(url, headers=headers, timeout=5)
             soup = BeautifulSoup(res.text, 'html.parser')
             tickers = [a.get('href').split('/')[-1].split('?')[0] for a in soup.find_all('a') if '/quote/' in a.get('href', '')]
-            return list(set([t for t in tickers if t.isalpha()]))[:70]
+            return list(set([t for t in tickers if t.isalpha()]))
         except:
             return ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'BRK-B', 'LLY']
 
-# --- MOTORE DI ANALISI ---
+# --- ANALISI CORE ---
 
-def esegui_scansione_completa():
+def esegui_analisi():
     all_tickers = get_sp500_dynamic()
     results = []
     news_feed = []
-    sector_data = {} # Per calcolare l'andamento del settore
+    sector_scores = {}
     
-    pool = all_tickers[:70] 
+    # Analizziamo i primi 70 per estrarre i 30 migliori (ottimizzazione velocità)
+    pool = all_tickers[:200] 
     status = st.empty()
     bar = st.progress(0)
     
     for i, sym in enumerate(pool):
-        status.markdown(f"<span style='color:#444'>Analisi in corso: **{sym}**...</span>", unsafe_allow_html=True)
+        status.markdown(f"<span style='color:#444'>Analisi: **{sym}**...</span>", unsafe_allow_html=True)
         try:
             clean_sym = sym.replace('.', '-')
             t = yf.Ticker(clean_sym)
-            hist = t.history(period="2y")
+            hist = t.history(period="3y") 
             if hist.empty: continue
             
             info = t.info
@@ -82,24 +76,27 @@ def esegui_scansione_completa():
             target = info.get('targetMeanPrice')
             sector = info.get('sector', 'N/A')
             
-            # 1. Calcolo Crescite
+            # --- CALCOLO CRESCITE (SICURO DA KEYERROR) ---
+            # Filtriamo per anno e prendiamo il primo/ultimo valore disponibile
             h24 = hist[hist.index.year == 2024]
             c24 = ((h24['Close'].iloc[-1] / h24['Close'].iloc[0]) - 1) * 100 if not h24.empty else 0
+            
             h25 = hist[hist.index.year == 2025]
             c25 = ((h25['Close'].iloc[-1] / h25['Close'].iloc[0]) - 1) * 100 if not h25.empty else 0
+            
             upside_26 = ((target / curr_p) - 1) * 100 if target else 0
             
-            # 2. Sentiment Score
+            # --- SENTIMENT SCORE ---
             score = 0
             sma50 = hist['Close'].rolling(window=50).mean().iloc[-1]
             if curr_p > sma50: score += 40
-            if upside_26 > 10: score += 40
+            if upside_26 > 12: score += 40
             if info.get('recommendationKey') in ['buy', 'strong_buy']: score += 20
             
-            # 3. Raccolta dati settore per andamento globale
+            # Tracking Settore
             if sector != 'N/A':
-                if sector not in sector_data: sector_data[sector] = []
-                sector_data[sector].append(score)
+                if sector not in sector_scores: sector_scores[sector] = []
+                sector_scores[sector].append(score)
 
             results.append({
                 "Azienda": info.get('longName', sym),
@@ -113,74 +110,65 @@ def esegui_scansione_completa():
                 "TradingView": f"https://www.tradingview.com/symbols/{clean_sym}/"
             })
             
-            # 4. News Feed (Forzato)
-            ticker_news = t.news
-            if ticker_news:
-                for n in ticker_news[:1]: # Prendiamo la più recente per titolo
-                    news_feed.append({
-                        "s": sym, 
-                        "t": n.get('title'), 
-                        "p": n.get('publisher'),
-                        "u": n.get('link')
-                    })
-        except:
-            continue
+            # --- RACCOLTA NEWS ---
+            raw_news = t.news
+            if raw_news:
+                n = raw_news[0]
+                news_feed.append({
+                    "s": sym, "t": n.get('title'), "p": n.get('publisher'), "u": n.get('link')
+                })
+        except: continue
         bar.progress((i + 1) / len(pool))
         
     status.empty()
     
-    # Calcolo andamento settore (media score del settore)
-    sector_trends = {s: (sum(v)/len(v)) for s, v in sector_data.items()}
+    # Calcolo Trend Settore (Media Score)
+    sector_trend_map = {s: (sum(v)/len(v)) for s, v in sector_scores.items()}
     
     df_final = pd.DataFrame(results).sort_values(by="Score", ascending=False).head(30)
     
-    # Aggiunta colonna andamento settore basata sulla media
-    def get_sector_trend(row):
-        avg = sector_trends.get(row['Settore'], 50)
-        return "🚀 Forte" if avg > 65 else "稳定 Stabile" if avg > 45 else "⚠️ Debole"
+    def format_sector_trend(row):
+        avg = sector_trend_map.get(row['Settore'], 50)
+        return "🚀 Forte" if avg > 65 else "⚖️ Stabile" if avg > 45 else "⚠️ Debole"
     
-    df_final['Trend Settore'] = df_final.apply(get_sector_trend, axis=1)
+    df_final['Trend Settore'] = df_final.apply(format_sector_trend, axis=1)
     
     return df_final, news_feed
 
 # --- INTERFACCIA ---
 
-st.title("🏹 Market Hunter 2026: S&P 500 Elite")
-st.write("Analisi dinamica dei 30 titoli leader con focus su **Settori** e **News**.")
+st.title("🏹 S&P 500 Hunter 2026: Analisi Settori & News")
 
-if st.button('🚀 AVVIA SCANSIONE SETTORI E NEWS'):
-    df_res, news_res = esegui_scansione_completa()
-    st.session_state.df_full = df_res
-    st.session_state.news_full = news_res
+if st.button('🚀 AVVIA SCANSIONE DINAMICA'):
+    df_res, news_res = esegui_analisi()
+    st.session_state.df_hunter = df_res
+    st.session_state.news_hunter = news_res
 
-if 'df_full' in st.session_state:
-    st.subheader("📊 Analisi Top 30: Sentiment, Settore e Previsioni")
+if 'df_hunter' in st.session_state:
+    st.subheader("📊 Top 30 Titoli per Sentiment")
     st.dataframe(
-        st.session_state.df_full.drop(columns=['Score']),
+        st.session_state.df_hunter.drop(columns=['Score']),
         column_config={
             "TradingView": st.column_config.LinkColumn("Grafico", display_text="Apri TV 📈"),
             "Crescita 2024 (%)": st.column_config.NumberColumn(format="%.2f%%"),
             "Crescita 2025 (%)": st.column_config.NumberColumn(format="%.2f%%"),
             "Prevista 2026 (%)": st.column_config.NumberColumn(format="%.2f%%"),
-            "Trend Settore": st.column_config.TextColumn("Andamento Settore")
         },
         hide_index=True, use_container_width=True
     )
     
     st.divider()
     
-    st.subheader("📰 News Feed in Tempo Reale")
-    if st.session_state.news_full:
-        c1, c2 = st.columns(2)
-        for idx, n in enumerate(st.session_state.news_full[:14]): # Mostriamo le prime 14 news
-            with (c1 if idx % 2 == 0 else c2):
+    st.subheader("📰 News Feed Leader di Mercato")
+    if st.session_state.news_hunter:
+        col1, col2 = st.columns(2)
+        for idx, n in enumerate(st.session_state.news_hunter[:14]):
+            with (col1 if idx % 2 == 0 else col2):
                 st.markdown(f"""
                     <div class="news-card">
-                        <small style='color:#777;'>{n['s']} • {n['p']}</small><br>
-                        <a href="{n['u']}" target="_blank" style="text-decoration:none; color:#222; font-weight:bold;">
+                        <small>{n['s']} • {n['p']}</small><br>
+                        <a href="{n['u']}" target="_blank" style="text-decoration:none; color:#333; font-weight:bold;">
                             {n['t']}
                         </a>
                     </div>
                 """, unsafe_allow_html=True)
-    else:
-        st.info("Nessuna notizia recente trovata per i titoli in classifica.")
