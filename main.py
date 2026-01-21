@@ -4,58 +4,76 @@ import pandas as pd
 from datetime import datetime
 import time
 
-# Configurazione Tema e Pagina
-st.set_page_config(page_title="Finanza 2026 Pro", layout="wide", initial_sidebar_state="collapsed")
+# Configurazione Pagina
+st.set_page_config(page_title="Finanza 2026 Pro", layout="wide")
 
-# CSS personalizzato - CORRETTO unsafe_allow_html
+# CSS per forzare lo sfondo chiaro e lo stile moderno
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
-    .stButton>button { width: 100%; border-radius: 20px; height: 3em; background-color: #007bff; color: white; }
-    .news-card { background-color: white; padding: 15px; border-radius: 10px; border-left: 5px solid #007bff; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    /* Sfondo principale chiaro */
+    .stApp {
+        background-color: #ffffff;
+    }
+    /* Stile per le card delle notizie */
+    .news-card {
+        background-color: #f1f3f5;
+        padding: 15px;
+        border-radius: 10px;
+        border-left: 6px solid #007bff;
+        margin-bottom: 12px;
+        color: #1f1f1f;
+    }
+    .news-title { font-weight: bold; font-size: 1.1em; display: block; margin-bottom: 5px; }
     .news-date { color: #6c757d; font-size: 0.85em; }
-    .news-title { font-weight: bold; color: #1f1f1f; }
+    
+    /* Titoli neri per massima leggibilità */
+    h1, h2, h3, p {
+        color: #1f1f1f !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("📈 Analisi Finanziaria 2026")
-st.caption("Focus su titoli sottovalutati e sentiment in tempo reale.")
+st.write("Monitoraggio dinamico di titoli e ETF con analisi del sentiment e news.")
 
-# --- FUNZIONE RECUPERO DATI E NEWS ---
 def get_data_and_news(tickers):
     results = []
     news_list = []
     
     progress_bar = st.progress(0)
+    status_text = st.empty()
+    
     for i, symbol in enumerate(tickers):
+        status_text.text(f"Analisi in corso: {symbol}...")
         try:
             t = yf.Ticker(symbol)
-            hist = t.history(period="3y")
+            info = t.info
+            name = info.get('longName', symbol) # Recupera il nome completo o usa il ticker se manca
             
+            hist = t.history(period="3y")
             if not hist.empty:
-                # Calcolo crescita (2024 e 2025)
+                # Calcolo crescita (2024 vs 2025)
                 c_2024 = ((hist['Close'].iloc[252] / hist['Close'].iloc[0]) - 1) * 100 if len(hist) > 252 else 0
                 c_2025 = ((hist['Close'].iloc[-1] / hist['Close'].iloc[252]) - 1) * 100 if len(hist) > 252 else 0
                 
                 results.append({
+                    "Azienda": name,
                     "Ticker": symbol,
                     "TradingView": f"https://www.tradingview.com/symbols/{symbol}",
                     "Crescita 2024 (%)": round(c_2024, 2),
                     "Crescita 2025 (%)": round(c_2025, 2),
-                    "Sentiment": "Bullish" if c_2025 > 0 else "Neutral"
+                    "Sentiment": "Bullish 🚀" if c_2025 > 5 else "Stabile ⚖️"
                 })
                 
-                # Recupero ultima notizia
-                ticker_news = t.news
-                if ticker_news:
-                    last_news = ticker_news[0]
-                    # Conversione data unix in leggibile
-                    dt_object = datetime.fromtimestamp(last_news['providerPublishTime'])
+                # News
+                if t.news:
+                    n = t.news[0]
                     news_list.append({
                         "ticker": symbol,
-                        "title": last_news['title'],
-                        "publisher": last_news['publisher'],
-                        "date": dt_object.strftime('%d %b %Y, %H:%M')
+                        "name": name,
+                        "title": n['title'],
+                        "publisher": n['publisher'],
+                        "date": datetime.fromtimestamp(n['providerPublishTime']).strftime('%d/%m/%Y %H:%M')
                     })
             
             time.sleep(0.1)
@@ -63,44 +81,45 @@ def get_data_and_news(tickers):
         except:
             continue
             
+    status_text.empty()
     return pd.DataFrame(results), news_list
 
 # --- INTERFACCIA ---
-if st.button('🔄 Avvia Scansione Mercati e News'):
-    # Lista dinamica (usiamo una selezione dei più attivi per stabilità)
-    trending = ['NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL', 'BRK-B', 'LLY', 'AVGO', 
-                'V', 'JPM', 'ENEL.MI', 'ISP.MI', 'UCG.MI', 'PYPL', 'INTC', 'ASML', 'NVO', 'SHEL']
+if st.button('🔄 AVVIA SCANSIONE DINAMICA'):
+    # Lista di test (20 titoli tra i più cercati)
+    trending = ['NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL', 'ENEL.MI', 'ISP.MI', 'UCG.MI', 
+                'PYPL', 'INTC', 'ASML', 'NVO', 'SHEL', 'AMD', 'NFLX', 'V', 'JPM', 'IE00B4L5Y983']
     
     df, news = get_data_and_news(trending)
     st.session_state.df = df
     st.session_state.news = news
 
 if 'df' in st.session_state:
-    # 1. Tabella Principale
-    st.subheader("📊 Analisi Titoli Selezionati")
+    st.subheader("📊 Tabella Analisi 2026")
     st.dataframe(
         st.session_state.df,
         column_config={
-            "TradingView": st.column_config.LinkColumn("Grafico", display_text="Dettagli 📈")
+            "TradingView": st.column_config.LinkColumn("Analisi", display_text="Grafico 📈"),
+            "Crescita 2024 (%)": st.column_config.NumberColumn(format="%.2f%%"),
+            "Crescita 2025 (%)": st.column_config.NumberColumn(format="%.2f%%")
         },
         hide_index=True, use_container_width=True
     )
     
-    # Pulsante di Download posizionato bene
-    csv = st.session_state.df.to_csv(index=False).encode('utf-8')
-    st.download_button("💾 Salva Report CSV", csv, f"Report_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
+    # Download CSV
+    csv_data = st.session_state.df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Scarica Report CSV", csv_data, f"Analisi_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
 
-    st.divider()
-
-    # 2. Sezione News Feed
-    st.subheader("📰 Ultime Notizie e Sentiment")
+    st.markdown("---")
+    st.subheader("📰 Ultime Notizie dai Mercati")
     
     col1, col2 = st.columns(2)
     for idx, item in enumerate(st.session_state.news):
         with (col1 if idx % 2 == 0 else col2):
             st.markdown(f"""
                 <div class="news-card">
-                    <span class="news-title">{item['ticker']} - {item['title']}</span><br>
+                    <span class="news-title">{item['name']} ({item['ticker']})</span>
+                    <p style='margin: 0;'>{item['title']}</p>
                     <span class="news-date">Fonte: {item['publisher']} | Data: {item['date']}</span>
                 </div>
-                """, unsafe_allow_stdio=True)
+                """, unsafe_allow_html=True)
