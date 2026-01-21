@@ -1,17 +1,3 @@
-#!/usr/bin/env python3
-"""
-app.py
-
-Analyze market sentiment for S&P500 and Nasdaq and list best N shares based on sentiment + growth.
-Outputs top results to console and saves results to top_stocks.csv
-
-Usage:
-    python app.py --index both --top 20
-
-Environment variables:
-    NEWSAPI_KEY    (optional) key for NewsAPI.org
-    FINNHUB_KEY    (optional) key for Finnhub.io (used if NEWSAPI_KEY missing)
-"""
 import os
 import argparse
 import time
