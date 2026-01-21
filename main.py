@@ -7,7 +7,7 @@ import time
 # Configurazione Tema e Pagina
 st.set_page_config(page_title="Finanza 2026 Pro", layout="wide", initial_sidebar_state="collapsed")
 
-# CSS personalizzato per uno stile moderno e chiaro
+# CSS personalizzato - CORRETTO unsafe_allow_html
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
@@ -16,10 +16,10 @@ st.markdown("""
     .news-date { color: #6c757d; font-size: 0.85em; }
     .news-title { font-weight: bold; color: #1f1f1f; }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
 
 st.title("📈 Analisi Finanziaria 2026")
-st.caption("Focus su titoli sottovalutati, espansione di mercato e sentiment in tempo reale.")
+st.caption("Focus su titoli sottovalutati e sentiment in tempo reale.")
 
 # --- FUNZIONE RECUPERO DATI E NEWS ---
 def get_data_and_news(tickers):
